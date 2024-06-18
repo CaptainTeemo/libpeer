@@ -74,14 +74,15 @@ struct Agent {
 };
 
 void agent_gather_candidate(Agent *agent, const char *urls, const char *username, const char *credential);
+void agent_gather_local_candidate(Agent *agent);
 
 void agent_get_local_description(Agent *agent, char *description, int length);
 
 int agent_loop(Agent *agent);
 
-int agent_send(Agent *agent, const uint8_t *buf, int len);
+int agent_send(Agent *agent, const uint8_t *buf, size_t len);
 
-int agent_recv(Agent *agent, uint8_t *buf, int len);
+int agent_recv(Agent *agent, uint8_t *buf, size_t len);
 
 void agent_set_remote_description(Agent *agent, char *description);
 

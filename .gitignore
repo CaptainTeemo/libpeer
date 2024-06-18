@@ -1,2 +1,5 @@
 cmake
 dist
+cmake-build-*
+build
+.idea

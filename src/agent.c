@@ -20,210 +20,220 @@
 
 static int agent_create_sockets(Agent *agent) {
 
-  int ret;
-  if ((ret = udp_socket_create(&agent->udp_sockets[0], AF_INET)) < 0) {
-    LOGE("Failed to create UDP socket.");
-    return ret;
-  }
-  LOGI("create IPv4 UDP socket: %d", agent->udp_sockets[0].fd);
+    int ret;
+    if ((ret = udp_socket_create(&agent->udp_sockets[0], AF_INET)) < 0) {
+        LOGE("Failed to create UDP socket.");
+        return ret;
+    }
+    LOGI("create IPv4 UDP socket: %d", agent->udp_sockets[0].fd);
 
 #if CONFIG_IPV6
-  if ((ret = udp_socket_create(&agent->udp_sockets[1], AF_INET6)) < 0) {
-    LOGE("Failed to create IPv6 UDP socket.");
-    return ret;
-  }
-  LOGI("create IPv6 UDP socket: %d", agent->udp_sockets[1].fd);
+    if ((ret = udp_socket_create(&agent->udp_sockets[1], AF_INET6)) < 0) {
+      LOGE("Failed to create IPv6 UDP socket.");
+      return ret;
+    }
+    LOGI("create IPv6 UDP socket: %d", agent->udp_sockets[1].fd);
 #endif
-  return 0;
+    return 0;
 }
 
 static int agent_socket_recv(Agent *agent, Address *addr, uint8_t *buf, int len) {
 
-  int ret = -1;
-  int i = 0;
-  int maxfd = 0;
-  fd_set rfds;
-  struct timeval tv;
-  tv.tv_sec = 0;
-  tv.tv_usec = AGENT_POLL_TIMEOUT * 1000;
-  FD_ZERO(&rfds);
+    int ret = -1;
+    int i = 0;
+    int maxfd = 0;
+    fd_set rfds;
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = AGENT_POLL_TIMEOUT * 1000;
+    FD_ZERO(&rfds);
 
-  for (i = 0; i < 2; i++) {
-    if (agent->udp_sockets[i].fd > maxfd) {
-      maxfd = agent->udp_sockets[i].fd;
-    }
-    if (agent->udp_sockets[i].fd > 0) {
-      FD_SET(agent->udp_sockets[i].fd, &rfds);
-    }
-  }
-
-  ret = select(maxfd + 1, &rfds, NULL, NULL, &tv);
-  if (ret < 0) {
-    LOGE("select error");
-  } else if (ret == 0) {
-    // timeout
-  } else {
     for (i = 0; i < 2; i++) {
-      if (FD_ISSET(agent->udp_sockets[i].fd, &rfds)) {
-        ret = udp_socket_recvfrom(&agent->udp_sockets[i], addr, buf, len);
-        break;
-      }
+        if (agent->udp_sockets[i].fd > maxfd) {
+            maxfd = agent->udp_sockets[i].fd;
+        }
+        if (agent->udp_sockets[i].fd > 0) {
+            FD_SET(agent->udp_sockets[i].fd, &rfds);
+        }
     }
-  }
 
-  return ret;
+    ret = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+    if (ret < 0) {
+        LOGE("select error");
+    } else if (ret == 0) {
+        // timeout
+    } else {
+        for (i = 0; i < 2; i++) {
+            if (FD_ISSET(agent->udp_sockets[i].fd, &rfds)) {
+                ret = udp_socket_recvfrom(&agent->udp_sockets[i], addr, buf, len);
+                break;
+            }
+        }
+    }
+
+    return ret;
 }
 
 static int agent_socket_send(Agent *agent, Address *addr, const uint8_t *buf, int len) {
 
-  switch (addr->family) {
-    case AF_INET6:
-      return udp_socket_sendto(&agent->udp_sockets[1], addr, buf, len);
-    case AF_INET:
-    default:
-      return udp_socket_sendto(&agent->udp_sockets[0], addr, buf, len);
-  }
-  return -1;
+    switch (addr->family) {
+        case AF_INET6:
+            return udp_socket_sendto(&agent->udp_sockets[1], addr, buf, len);
+        case AF_INET:
+        default:
+            return udp_socket_sendto(&agent->udp_sockets[0], addr, buf, len);
+    }
+    return -1;
 }
 
 static int agent_create_host_addr(Agent *agent) {
 
-  UdpSocket *udp_socket;
+    UdpSocket *udp_socket;
 
-  udp_socket = &agent->udp_sockets[0];
-  if (ports_get_host_addr(&udp_socket->bind_addr)) {
-    LOGD("addr: %d.%d.%d.%d", udp_socket->bind_addr.ipv4[0], udp_socket->bind_addr.ipv4[1], udp_socket->bind_addr.ipv4[2], udp_socket->bind_addr.ipv4[3]);
-    IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
-    ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_HOST, &udp_socket->bind_addr);
-  }
+    udp_socket = &agent->udp_sockets[0];
+    if (ports_get_host_addr(&udp_socket->bind_addr)) {
+        LOGD("addr: %d.%d.%d.%d", udp_socket->bind_addr.ipv4[0], udp_socket->bind_addr.ipv4[1],
+             udp_socket->bind_addr.ipv4[2], udp_socket->bind_addr.ipv4[3]);
+        IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
+        ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_HOST,
+                             &udp_socket->bind_addr);
+    }
 
 #if CONFIG_IPV6
-  udp_socket = &agent->udp_sockets[1];
-  if (ports_get_host_addr(&udp_socket->bind_addr)) {
-    LOGD("addr: %x:%x:%x:%x:%x:%x:%x:%x", udp_socket->bind_addr.ipv6[0], udp_socket->bind_addr.ipv6[1], udp_socket->bind_addr.ipv6[2], udp_socket->bind_addr.ipv6[3], udp_socket->bind_addr.ipv6[4], udp_socket->bind_addr.ipv6[5], udp_socket->bind_addr.ipv6[6], udp_socket->bind_addr.ipv6[7]);
-    IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
-    ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_HOST, &udp_socket->bind_addr);
-  }
+    udp_socket = &agent->udp_sockets[1];
+    if (ports_get_host_addr(&udp_socket->bind_addr)) {
+      LOGD("addr: %x:%x:%x:%x:%x:%x:%x:%x", udp_socket->bind_addr.ipv6[0], udp_socket->bind_addr.ipv6[1], udp_socket->bind_addr.ipv6[2], udp_socket->bind_addr.ipv6[3], udp_socket->bind_addr.ipv6[4], udp_socket->bind_addr.ipv6[5], udp_socket->bind_addr.ipv6[6], udp_socket->bind_addr.ipv6[7]);
+      IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
+      ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_HOST, &udp_socket->bind_addr);
+    }
 #endif
-  return 0;
+    return 0;
 }
 
 static int agent_create_bind_addr(Agent *agent, Address *serv_addr) {
 
-  int ret = -1;
-  int retry = 0;
-  Address bind_addr;
-  StunMessage send_msg;
-  StunMessage recv_msg;
-  memset(&send_msg, 0, sizeof(send_msg));
-  memset(&recv_msg, 0, sizeof(recv_msg));
+    int ret = -1;
+    int retry = 0;
+    Address bind_addr;
+    StunMessage send_msg;
+    StunMessage recv_msg;
+    memset(&send_msg, 0, sizeof(send_msg));
+    memset(&recv_msg, 0, sizeof(recv_msg));
 
-  stun_msg_create(&send_msg, STUN_CLASS_REQUEST | STUN_METHOD_BINDING);
+    stun_msg_create(&send_msg, STUN_CLASS_REQUEST | STUN_METHOD_BINDING);
 
-  ret = agent_socket_send(agent, serv_addr, send_msg.buf, send_msg.size);
+    ret = agent_socket_send(agent, serv_addr, send_msg.buf, send_msg.size);
 
-  if (ret == -1) {
-    LOGE("Failed to send STUN Binding Request.");
-    return ret;
-  }
-
-  // blocking 1 second
-  while (retry < 1000) {
-    ret = agent_socket_recv(agent, NULL, recv_msg.buf, sizeof(recv_msg.buf));
-    if (ret > 0) {
-      break;
+    if (ret == -1) {
+        LOGE("Failed to send STUN Binding Request.");
+        return ret;
     }
-  }
 
-  if (ret <= 0) {
-    LOGD("Failed to receive STUN Binding Response.");
+    // blocking 1 second
+    while (retry < 1000) {
+        ret = agent_socket_recv(agent, NULL, recv_msg.buf, sizeof(recv_msg.buf));
+        if (ret > 0) {
+            break;
+        }
+    }
+
+    if (ret <= 0) {
+        LOGD("Failed to receive STUN Binding Response.");
+        return ret;
+    }
+
+    stun_parse_msg_buf(&recv_msg);
+    memcpy(&bind_addr, &recv_msg.mapped_addr, sizeof(Address));
+    IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
+    ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_SRFLX, &bind_addr);
     return ret;
-  }
-
-  stun_parse_msg_buf(&recv_msg);
-  memcpy(&bind_addr, &recv_msg.mapped_addr, sizeof(Address));
-  IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
-  ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_SRFLX, &bind_addr);
-  return ret;
 }
 
 static int agent_create_turn_addr(Agent *agent, Address *serv_addr, const char *username, const char *credential) {
 
-  int ret = -1;
-  uint32_t attr = ntohl(0x11000000);
-  int retry = 0;
-  Address turn_addr;
-  StunMessage send_msg;
-  StunMessage recv_msg;
-  memset(&recv_msg, 0, sizeof(recv_msg));
-  memset(&send_msg, 0, sizeof(send_msg));
-  stun_msg_create(&send_msg, STUN_METHOD_ALLOCATE);
-  stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_REQUESTED_TRANSPORT, sizeof(attr), (char*)&attr); // UDP
-  stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_USERNAME, strlen(username), (char*)username);
-
-  ret = agent_socket_send(agent, serv_addr, send_msg.buf, send_msg.size);
-  if (ret == -1) {
-    LOGE("Failed to send TURN Binding Request.");
-    return -1;
-  }
-
-  // blocking 1 second
-  while (retry < 1000) {
-    ret = agent_socket_recv(agent, NULL, recv_msg.buf, sizeof(recv_msg.buf));
-    if (ret > 0) {
-      break;
-    }
-  }
-
-  if (ret <= 0) {
-    LOGD("Failed to receive STUN Binding Response.");
-    return ret;
-  }
-
-  stun_parse_msg_buf(&recv_msg);
-
-  if (recv_msg.stunclass == STUN_CLASS_ERROR && recv_msg.stunmethod == STUN_METHOD_ALLOCATE) {
-
+    int ret = -1;
+    uint32_t attr = ntohl(0x11000000);
+    int retry = 0;
+    Address turn_addr;
+    StunMessage send_msg;
+    StunMessage recv_msg;
+    memset(&recv_msg, 0, sizeof(recv_msg));
     memset(&send_msg, 0, sizeof(send_msg));
     stun_msg_create(&send_msg, STUN_METHOD_ALLOCATE);
-    stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_REQUESTED_TRANSPORT, sizeof(attr), (char*)&attr); // UDP
-    stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_USERNAME, strlen(username), (char*)username);
-    stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_NONCE, strlen(recv_msg.nonce), recv_msg.nonce);
-    stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_REALM, strlen(recv_msg.realm), recv_msg.realm);
-    stun_msg_finish(&send_msg, STUN_CREDENTIAL_LONG_TERM, credential, strlen(credential));
-  } else {
-    LOGE("Invalid TURN Binding Response.");
-    return -1;
-  }
+    stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_REQUESTED_TRANSPORT, sizeof(attr), (char *) &attr); // UDP
+    stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_USERNAME, strlen(username), (char *) username);
 
-  ret = agent_socket_send(agent, serv_addr, send_msg.buf, send_msg.size);
-  if (ret < 0) {
-    LOGE("Failed to send TURN Binding Request.");
-    return -1;
-  }
+    ret = agent_socket_send(agent, serv_addr, send_msg.buf, send_msg.size);
+    if (ret == -1) {
+        LOGE("Failed to send TURN Binding Request.");
+        return -1;
+    }
 
-  memset(&recv_msg, 0, sizeof(recv_msg));
-  ret = agent_socket_recv(agent, NULL, recv_msg.buf, sizeof(recv_msg.buf));
-  if (ret <= 0) {
-    LOGD("Failed to receive TURN Binding Response.");
+    // blocking 1 second
+    while (retry < 1000) {
+        ret = agent_socket_recv(agent, NULL, recv_msg.buf, sizeof(recv_msg.buf));
+        if (ret > 0) {
+            break;
+        }
+    }
+
+    if (ret <= 0) {
+        LOGD("Failed to receive STUN Binding Response.");
+        return ret;
+    }
+
+    stun_parse_msg_buf(&recv_msg);
+
+    if (recv_msg.stunclass == STUN_CLASS_ERROR && recv_msg.stunmethod == STUN_METHOD_ALLOCATE) {
+
+        memset(&send_msg, 0, sizeof(send_msg));
+        stun_msg_create(&send_msg, STUN_METHOD_ALLOCATE);
+        stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_REQUESTED_TRANSPORT, sizeof(attr), (char *) &attr); // UDP
+        stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_USERNAME, strlen(username), (char *) username);
+        stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_NONCE, strlen(recv_msg.nonce), recv_msg.nonce);
+        stun_msg_write_attr(&send_msg, STUN_ATTR_TYPE_REALM, strlen(recv_msg.realm), recv_msg.realm);
+        stun_msg_finish(&send_msg, STUN_CREDENTIAL_LONG_TERM, credential, strlen(credential));
+    } else {
+        LOGE("Invalid TURN Binding Response.");
+        return -1;
+    }
+
+    ret = agent_socket_send(agent, serv_addr, send_msg.buf, send_msg.size);
+    if (ret < 0) {
+        LOGE("Failed to send TURN Binding Request.");
+        return -1;
+    }
+
+    memset(&recv_msg, 0, sizeof(recv_msg));
+    ret = agent_socket_recv(agent, NULL, recv_msg.buf, sizeof(recv_msg.buf));
+    if (ret <= 0) {
+        LOGD("Failed to receive TURN Binding Response.");
+        return ret;
+    }
+
+    stun_parse_msg_buf(&recv_msg);
+    memcpy(&turn_addr, &recv_msg.relayed_addr, sizeof(Address));
+    IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
+    ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_RELAY, &turn_addr);
     return ret;
-  }
-
-  stun_parse_msg_buf(&recv_msg);
-  memcpy(&turn_addr, &recv_msg.relayed_addr, sizeof(Address));
-  IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
-  ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_RELAY, &turn_addr);
-  return ret;
 }
 
 void agent_init(Agent *agent) {
-  agent->local_candidates_count = 0;
+    agent->local_candidates_count = 0;
 }
 
 void agent_deinit(Agent *agent) {
+    udp_socket_close(&agent->udp_socket);
+    memset(agent, 0, sizeof(Agent));
+}
 
-  udp_socket_close(&agent->udp_socket);
-  memset(agent, 0, sizeof(Agent));
+void agent_gather_local_candidate(Agent *agent) {
+    const char *hostname = "192.168.1.19";
+    Address resolved_addr;
+    ports_resolve_addr(hostname, &resolved_addr);
+
+    IceCandidate *ice_candidate = agent->local_candidates + agent->local_candidates_count++;
+    ice_candidate_create(ice_candidate, agent->local_candidates_count, ICE_CANDIDATE_TYPE_HOST, &resolved_addr);
 }
 
 /*
@@ -233,168 +243,160 @@ void agent_deinit(Agent *agent) {
  * create server-reflexive candidate or relay candidate
  */
 void agent_gather_candidate(Agent *agent, const char *urls, const char *username, const char *credential) {
+    char *port = NULL;
+    char hostname[64];
+    int i;
+    int addr_type[1] = {AF_INET}; // ipv6 no need stun
+    Address resolved_addr;
+    memset(hostname, 0, sizeof(hostname));
+    memset(agent, 0, sizeof(Agent));
+    agent_create_sockets(agent);
 
-  char *port = NULL;
-  char hostname[64];
-  int i;
-  int addr_type[1] = {AF_INET}; // ipv6 no need stun
-  Address resolved_addr;
-  memset(hostname, 0, sizeof(hostname));
-  memset(agent, 0, sizeof(Agent));
-  agent_create_sockets(agent);
+    agent_create_host_addr(agent);
 
-  agent_create_host_addr(agent);
+    do {
+        if ((port = strstr(urls + 5, ":")) == NULL) {
+            break;
+        }
 
-  do {
+        resolved_addr.port = atoi(port + 1);
+        if (resolved_addr.port <= 0) {
+            break;
+        }
+        LOGI("resolved_addr.port: %d", resolved_addr.port);
 
-    if ((port = strstr(urls + 5, ":")) == NULL) {
-      break;
-    }
+        snprintf(hostname, port - urls - 5 + 1, "%s", urls + 5);
 
-    resolved_addr.port = atoi(port + 1);
-    if (resolved_addr.port <= 0) {
-      break;
-    }
-    LOGI("resolved_addr.port: %d", resolved_addr.port);
+        for (i = 0; i < sizeof(addr_type) / sizeof(addr_type[0]); i++) {
+            resolved_addr.family = addr_type[i];
+            if (ports_resolve_addr(hostname, &resolved_addr) == 0) {
+                LOGI("resolved_addr.ipv4: %d.%d.%d.%d",
+                     resolved_addr.ipv4[0], resolved_addr.ipv4[1], resolved_addr.ipv4[2], resolved_addr.ipv4[3]);
+            }
 
-    snprintf(hostname, port - urls - 5 + 1, "%s", urls + 5);
+            if (strncmp(urls, "stun:", 5) == 0) {
+                LOGD("create stun addr");
+                agent_create_bind_addr(agent, &resolved_addr);
+            } else if (strncmp(urls, "turn:", 5) == 0) {
+                LOGD("create turn addr");
+                agent_create_turn_addr(agent, &resolved_addr, username, credential);
+            }
+        }
 
-    for (i = 0; i < sizeof(addr_type) / sizeof(addr_type[0]); i++) {
-      resolved_addr.family = addr_type[i];
-      if (ports_resolve_addr(hostname, &resolved_addr) == 0) {
-	LOGI("resolved_addr.ipv4: %d.%d.%d.%d",
-	  resolved_addr.ipv4[0], resolved_addr.ipv4[1], resolved_addr.ipv4[2], resolved_addr.ipv4[3]);
-      }
-
-      if (strncmp(urls, "stun:", 5) == 0) {
-        LOGD("create stun addr");
-        agent_create_bind_addr(agent, &resolved_addr);
-      } else if (strncmp(urls, "turn:", 5) == 0) {
-        LOGD("create turn addr");
-        agent_create_turn_addr(agent, &resolved_addr, username, credential);
-      }
-    }
-
-  } while (0);
+    } while (0);
 
 }
 
 void agent_get_local_description(Agent *agent, char *description, int length) {
+    int ncandidates = 0;
 
-  int ncandidates = 0;
+    memset(description, 0, length);
+    memset(agent->local_ufrag, 0, sizeof(agent->local_ufrag));
+    memset(agent->local_upwd, 0, sizeof(agent->local_upwd));
 
-  memset(description, 0, length);
-  memset(agent->local_ufrag, 0, sizeof(agent->local_ufrag));
-  memset(agent->local_upwd, 0, sizeof(agent->local_upwd));
+    utils_random_string(agent->local_ufrag, 4);
+    utils_random_string(agent->local_upwd, 24);
 
-  utils_random_string(agent->local_ufrag, 4);
-  utils_random_string(agent->local_upwd, 24);
+    snprintf(description, length, "a=ice-ufrag:%s\r\na=ice-pwd:%s\r\n", agent->local_ufrag, agent->local_upwd);
+    ncandidates = agent->local_candidates_count;
 
-  snprintf(description, length, "a=ice-ufrag:%s\r\na=ice-pwd:%s\r\n", agent->local_ufrag, agent->local_upwd);
-  ncandidates = agent->local_candidates_count;
+    for (int i = 0; i < agent->local_candidates_count; i++) {
+        ice_candidate_to_description(&agent->local_candidates[i], description + strlen(description),
+                                     length - strlen(description));
+    }
 
-  for (int i = 0; i < agent->local_candidates_count; i++) {
-    ice_candidate_to_description(&agent->local_candidates[i], description + strlen(description), length - strlen(description));
-  }
-
-  // remove last \n
-  description[strlen(description)] = '\0';
-  LOGD("local description:\n%s", description);
+    // remove last \n
+    description[strlen(description)] = '\0';
+    LOGD("local description:\n%s", description);
 }
 
-int agent_send(Agent *agent, const uint8_t *buf, int len) {
-
-  return agent_socket_send(agent, &agent->nominated_pair->remote->addr, buf, len);
+int agent_send(Agent *agent, const uint8_t *buf, size_t len) {
+    return agent_socket_send(agent, &agent->nominated_pair->remote->addr, buf, len);
 }
 
 static void agent_create_binding_response(Agent *agent, StunMessage *msg, Address *addr) {
-
-  char username[584];
-  char mapped_address[8];
-  StunHeader *header;
-  stun_msg_create(msg, STUN_CLASS_RESPONSE | STUN_METHOD_BINDING);
-  header = (StunHeader *)msg->buf;
-  memcpy(header->transaction_id, agent->transaction_id, sizeof(header->transaction_id));
-  snprintf(username, sizeof(username), "%s:%s", agent->local_ufrag, agent->remote_ufrag);
-  // TODO: XOR-MAPPED-ADDRESS
-  stun_set_mapped_address(mapped_address, NULL, addr);
-  stun_msg_write_attr(msg, STUN_ATTR_TYPE_MAPPED_ADDRESS, 8, mapped_address);
-  stun_msg_write_attr(msg, STUN_ATTR_TYPE_USERNAME, strlen(username), username);
-  stun_msg_finish(msg, STUN_CREDENTIAL_SHORT_TERM, agent->local_upwd, strlen(agent->local_upwd));
+    char username[584];
+    char mapped_address[8];
+    StunHeader *header;
+    stun_msg_create(msg, STUN_CLASS_RESPONSE | STUN_METHOD_BINDING);
+    header = (StunHeader *) msg->buf;
+    memcpy(header->transaction_id, agent->transaction_id, sizeof(header->transaction_id));
+    snprintf(username, sizeof(username), "%s:%s", agent->local_ufrag, agent->remote_ufrag);
+    // TODO: XOR-MAPPED-ADDRESS
+    stun_set_mapped_address(mapped_address, NULL, addr);
+    stun_msg_write_attr(msg, STUN_ATTR_TYPE_MAPPED_ADDRESS, 8, mapped_address);
+    stun_msg_write_attr(msg, STUN_ATTR_TYPE_USERNAME, strlen(username), username);
+    stun_msg_finish(msg, STUN_CREDENTIAL_SHORT_TERM, agent->local_upwd, strlen(agent->local_upwd));
 }
 
 static void agent_create_binding_request(Agent *agent, StunMessage *msg) {
-
-  uint64_t tie_breaker = 0; // always be controlled
-  // send binding request
-  stun_msg_create(msg, STUN_CLASS_REQUEST | STUN_METHOD_BINDING);
-  char username[584];
-  memset(username, 0, sizeof(username));
-  snprintf(username, sizeof(username), "%s:%s", agent->remote_ufrag, agent->local_ufrag);
-  stun_msg_write_attr(msg, STUN_ATTR_TYPE_USERNAME, strlen(username), username);
-  stun_msg_write_attr(msg, STUN_ATTR_TYPE_PRIORITY, 4, (char *)&agent->nominated_pair->priority);
-  stun_msg_write_attr(msg, STUN_ATTR_TYPE_USE_CANDIDATE, 0, NULL);
-  stun_msg_write_attr(msg, STUN_ATTR_TYPE_ICE_CONTROLLED, 8, (char *)&tie_breaker);
-  stun_msg_finish(msg, STUN_CREDENTIAL_SHORT_TERM, agent->remote_upwd, strlen(agent->remote_upwd));
+    uint64_t tie_breaker = 0; // always be controlled
+    // send binding request
+    stun_msg_create(msg, STUN_CLASS_REQUEST | STUN_METHOD_BINDING);
+    char username[584];
+    memset(username, 0, sizeof(username));
+    snprintf(username, sizeof(username), "%s:%s", agent->remote_ufrag, agent->local_ufrag);
+    stun_msg_write_attr(msg, STUN_ATTR_TYPE_USERNAME, strlen(username), username);
+    stun_msg_write_attr(msg, STUN_ATTR_TYPE_PRIORITY, 4, (char *) &agent->nominated_pair->priority);
+    stun_msg_write_attr(msg, STUN_ATTR_TYPE_USE_CANDIDATE, 0, NULL);
+    stun_msg_write_attr(msg, STUN_ATTR_TYPE_ICE_CONTROLLED, 8, (char *) &tie_breaker);
+    stun_msg_finish(msg, STUN_CREDENTIAL_SHORT_TERM, agent->remote_upwd, strlen(agent->remote_upwd));
 }
 
 void agent_process_stun_request(Agent *agent, StunMessage *stun_msg, Address *addr) {
-
-  StunMessage msg;
-  StunHeader *header;
-  switch (stun_msg->stunmethod) {
-    case STUN_METHOD_BINDING:
-      if (stun_msg_is_valid(stun_msg->buf, stun_msg->size, agent->local_upwd) == 0) {
-        header = (StunHeader *)stun_msg->buf;
-        memcpy(agent->transaction_id, header->transaction_id, sizeof(header->transaction_id));
-        agent_create_binding_response(agent, &msg, addr);
-        agent_socket_send(agent, addr, msg.buf, msg.size);
-      }
-      break;
-    default:
-      break;
-  }
+    StunMessage msg;
+    StunHeader *header;
+    switch (stun_msg->stunmethod) {
+        case STUN_METHOD_BINDING:
+            if (stun_msg_is_valid(stun_msg->buf, stun_msg->size, agent->local_upwd) == 0) {
+                header = (StunHeader *) stun_msg->buf;
+                memcpy(agent->transaction_id, header->transaction_id, sizeof(header->transaction_id));
+                agent_create_binding_response(agent, &msg, addr);
+                agent_socket_send(agent, addr, msg.buf, msg.size);
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 void agent_process_stun_response(Agent *agent, StunMessage *stun_msg) {
-
-  switch (stun_msg->stunmethod) {
-    case STUN_METHOD_BINDING:
-      if (stun_msg_is_valid(stun_msg->buf, stun_msg->size, agent->remote_upwd) == 0) {
-        agent->nominated_pair->state = ICE_CANDIDATE_STATE_SUCCEEDED;
-      }
-      break;
-    default:
-      break;
-  }
+    switch (stun_msg->stunmethod) {
+        case STUN_METHOD_BINDING:
+            if (stun_msg_is_valid(stun_msg->buf, stun_msg->size, agent->remote_upwd) == 0) {
+                agent->nominated_pair->state = ICE_CANDIDATE_STATE_SUCCEEDED;
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 
-int agent_recv(Agent *agent, uint8_t *buf, int len) {
+int agent_recv(Agent *agent, uint8_t *buf, size_t len) {
+    int ret = -1;
+    StunMessage stun_msg;
+    Address addr;
+    if ((ret = agent_socket_recv(agent, &addr, buf, len)) > 0 && stun_probe(buf, len) == 0) {
 
-  int ret = -1;
-  StunMessage stun_msg;
-  Address addr;
-  if ((ret = agent_socket_recv(agent, &addr, buf, len)) > 0 && stun_probe(buf, len) == 0) {
-
-    memcpy(stun_msg.buf, buf, ret);
-    stun_msg.size = ret;
-    stun_parse_msg_buf(&stun_msg);
-    switch (stun_msg.stunclass) {
-      case STUN_CLASS_REQUEST:
-        agent_process_stun_request(agent, &stun_msg, &addr);
-        break;
-      case STUN_CLASS_RESPONSE:
-        agent_process_stun_response(agent, &stun_msg);
-        break;
-      case STUN_CLASS_ERROR:
-        break;
-      default:
-        break;
+        memcpy(stun_msg.buf, buf, ret);
+        stun_msg.size = ret;
+        stun_parse_msg_buf(&stun_msg);
+        switch (stun_msg.stunclass) {
+            case STUN_CLASS_REQUEST:
+                agent_process_stun_request(agent, &stun_msg, &addr);
+                break;
+            case STUN_CLASS_RESPONSE:
+                agent_process_stun_response(agent, &stun_msg);
+                break;
+            case STUN_CLASS_ERROR:
+                break;
+            default:
+                break;
+        }
+        ret = 0;
     }
-    ret = 0;
-  }
-  return ret;
+    return ret;
 }
 
 void agent_set_remote_description(Agent *agent, char *description) {
@@ -404,112 +406,119 @@ a=ice-ufrag:Iexb
 a=ice-pwd:IexbSoY7JulyMbjKwISsG9
 a=candidate:1 1 UDP 1 36.231.28.50 38143 typ srflx
 */
-  int i, j;
+    int i, j;
 
-  LOGD("Set remote description:\n%s", description);
+    LOGD("Set remote description:\n%s", description);
 
-  char *line_start = description;
-  char *line_end = NULL;
+    char *line_start = description;
+    char *line_end = NULL;
 
-  while ((line_end = strstr(line_start, "\r\n")) != NULL) {
+    while ((line_end = strstr(line_start, "\r\n")) != NULL) {
 
-    if (strncmp(line_start, "a=ice-ufrag:", strlen("a=ice-ufrag:")) == 0) {
+        if (strncmp(line_start, "a=ice-ufrag:", strlen("a=ice-ufrag:")) == 0) {
 
-      strncpy(agent->remote_ufrag, line_start + strlen("a=ice-ufrag:"), line_end - line_start - strlen("a=ice-ufrag:"));
+            strncpy(agent->remote_ufrag, line_start + strlen("a=ice-ufrag:"),
+                    line_end - line_start - strlen("a=ice-ufrag:"));
 
-    } else if (strncmp(line_start, "a=ice-pwd:", strlen("a=ice-pwd:")) == 0) {
+        } else if (strncmp(line_start, "a=ice-pwd:", strlen("a=ice-pwd:")) == 0) {
 
-      strncpy(agent->remote_upwd, line_start + strlen("a=ice-pwd:"), line_end - line_start - strlen("a=ice-pwd:"));
+            strncpy(agent->remote_upwd, line_start + strlen("a=ice-pwd:"),
+                    line_end - line_start - strlen("a=ice-pwd:"));
 
-    } else if (strncmp(line_start, "a=candidate:", strlen("a=candidate:")) == 0) {
+        } else if (strncmp(line_start, "a=candidate:", strlen("a=candidate:")) == 0) {
 
-      if (ice_candidate_from_description(&agent->remote_candidates[agent->remote_candidates_count], line_start, line_end) == 0) {
-        agent->remote_candidates_count++;
-      }
+            if (ice_candidate_from_description(&agent->remote_candidates[agent->remote_candidates_count], line_start,
+                                               line_end) == 0) {
+                agent->remote_candidates_count++;
+            }
+        }
+
+        line_start = line_end + 2;
     }
 
-    line_start = line_end + 2;
-  }
+    LOGD("remote ufrag: %s", agent->remote_ufrag);
+    LOGD("remote upwd: %s", agent->remote_upwd);
 
-  LOGD("remote ufrag: %s", agent->remote_ufrag);
-  LOGD("remote upwd: %s", agent->remote_upwd);
-
-  // Please set gather candidates before set remote description
-  for (i = 0; i < agent->local_candidates_count; i++) {
-    for (j = 0; j < agent->remote_candidates_count; j++) {
-      if (agent->local_candidates[i].addr.family == agent->remote_candidates[j].addr.family) {
-	agent->candidate_pairs[agent->candidate_pairs_num].local = &agent->local_candidates[i];
-	agent->candidate_pairs[agent->candidate_pairs_num].remote = &agent->remote_candidates[j];
-	agent->candidate_pairs[agent->candidate_pairs_num].priority = agent->local_candidates[i].priority + agent->remote_candidates[j].priority;
-	agent->candidate_pairs[agent->candidate_pairs_num].state = ICE_CANDIDATE_STATE_FROZEN;
-	agent->candidate_pairs_num++;
-      }
+    // Please set gather candidates before set remote description
+    for (i = 0; i < agent->local_candidates_count; i++) {
+        for (j = 0; j < agent->remote_candidates_count; j++) {
+            if (agent->local_candidates[i].addr.family == agent->remote_candidates[j].addr.family) {
+                agent->candidate_pairs[agent->candidate_pairs_num].local = &agent->local_candidates[i];
+                agent->candidate_pairs[agent->candidate_pairs_num].remote = &agent->remote_candidates[j];
+                agent->candidate_pairs[agent->candidate_pairs_num].priority =
+                        agent->local_candidates[i].priority + agent->remote_candidates[j].priority;
+                agent->candidate_pairs[agent->candidate_pairs_num].state = ICE_CANDIDATE_STATE_FROZEN;
+                agent->candidate_pairs_num++;
+            }
+        }
     }
-  }
-  LOGD("candidate pairs num: %d", agent->candidate_pairs_num);
+    LOGD("candidate pairs num: %d", agent->candidate_pairs_num);
 }
 
 
 int agent_connectivity_check(Agent *agent) {
 
-  uint8_t buf[1400];
-  StunMessage msg;
+    uint8_t buf[1400];
+    StunMessage msg;
 
-  if (agent->nominated_pair->state != ICE_CANDIDATE_STATE_INPROGRESS) {
-    LOGI("nominated pair is not in progress");
-    return -1;
-  }
-
-  memset(&msg, 0, sizeof(msg));
-
-  if (agent->nominated_pair->conncheck % AGENT_CONNCHECK_PERIOD == 0) {
-
-    if (agent->nominated_pair->remote->addr.family == AF_INET) {
-      LOGD("send binding request to remote ip: %d.%d.%d.%d, port: %d", agent->nominated_pair->remote->addr.ipv4[0], agent->nominated_pair->remote->addr.ipv4[1], agent->nominated_pair->remote->addr.ipv4[2], agent->nominated_pair->remote->addr.ipv4[3], agent->nominated_pair->remote->addr.port);
-    } else {
-      char astring[INET6_ADDRSTRLEN];
-      addr_to_text(&(agent->nominated_pair->remote->addr), astring, INET6_ADDRSTRLEN);
-      LOGD("send binding request to remote ip: %s, port: %d", astring, agent->nominated_pair->remote->addr.port);
+    if (agent->nominated_pair->state != ICE_CANDIDATE_STATE_INPROGRESS) {
+        LOGI("nominated pair is not in progress");
+        return -1;
     }
-    agent_create_binding_request(agent, &msg);
-    agent_socket_send(agent, &agent->nominated_pair->remote->addr, msg.buf, msg.size);
-  }
 
-  agent_recv(agent, buf, sizeof(buf));
+    memset(&msg, 0, sizeof(msg));
 
-  // XXX: FULL ICE
-  if (agent->nominated_pair->state == ICE_CANDIDATE_STATE_SUCCEEDED) {
-    agent->selected_pair = agent->nominated_pair;
-    return 0;
-  }
+    if (agent->nominated_pair->conncheck % AGENT_CONNCHECK_PERIOD == 0) {
 
-  return -1;
+        if (agent->nominated_pair->remote->addr.family == AF_INET) {
+            LOGD("send binding request to remote ip: %d.%d.%d.%d, port: %d",
+                 agent->nominated_pair->remote->addr.ipv4[0], agent->nominated_pair->remote->addr.ipv4[1],
+                 agent->nominated_pair->remote->addr.ipv4[2], agent->nominated_pair->remote->addr.ipv4[3],
+                 agent->nominated_pair->remote->addr.port);
+        } else {
+            char astring[INET6_ADDRSTRLEN];
+            addr_to_text(&(agent->nominated_pair->remote->addr), astring, INET6_ADDRSTRLEN);
+            LOGD("send binding request to remote ip: %s, port: %d", astring, agent->nominated_pair->remote->addr.port);
+        }
+        agent_create_binding_request(agent, &msg);
+        agent_socket_send(agent, &agent->nominated_pair->remote->addr, msg.buf, msg.size);
+    }
+
+    agent_recv(agent, buf, sizeof(buf));
+
+    // XXX: FULL ICE
+    if (agent->nominated_pair->state == ICE_CANDIDATE_STATE_SUCCEEDED) {
+        agent->selected_pair = agent->nominated_pair;
+        return 0;
+    }
+
+    return -1;
 }
 
 int agent_select_candidate_pair(Agent *agent) {
 
-  int i;
-  for (i = 0; i < agent->candidate_pairs_num; i++) {
+    int i;
+    for (i = 0; i < agent->candidate_pairs_num; i++) {
 
-    if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_FROZEN) {
-      // nominate this pair
-      agent->nominated_pair = &agent->candidate_pairs[i];
-      agent->candidate_pairs[i].conncheck = 0;
-      agent->candidate_pairs[i].state = ICE_CANDIDATE_STATE_INPROGRESS;
-      return 0;
-    } else if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_INPROGRESS) {
-      agent->candidate_pairs[i].conncheck++;
-      if (agent->candidate_pairs[i].conncheck < AGENT_CONNCHECK_MAX) {
-        return 0;
-      }
-      agent->candidate_pairs[i].state = ICE_CANDIDATE_STATE_FAILED;
-    } else if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_FAILED) {
+        if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_FROZEN) {
+            // nominate this pair
+            agent->nominated_pair = &agent->candidate_pairs[i];
+            agent->candidate_pairs[i].conncheck = 0;
+            agent->candidate_pairs[i].state = ICE_CANDIDATE_STATE_INPROGRESS;
+            return 0;
+        } else if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_INPROGRESS) {
+            agent->candidate_pairs[i].conncheck++;
+            if (agent->candidate_pairs[i].conncheck < AGENT_CONNCHECK_MAX) {
+                return 0;
+            }
+            agent->candidate_pairs[i].state = ICE_CANDIDATE_STATE_FAILED;
+        } else if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_FAILED) {
 
-    } else if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_SUCCEEDED) {
-      agent->selected_pair = &agent->candidate_pairs[i];
-      return 0;
+        } else if (agent->candidate_pairs[i].state == ICE_CANDIDATE_STATE_SUCCEEDED) {
+            agent->selected_pair = &agent->candidate_pairs[i];
+            return 0;
+        }
     }
-  }
-  // all candidate pairs are failed
-  return -1;
+    // all candidate pairs are failed
+    return -1;
 }

@@ -2,12 +2,13 @@
 #define PEER_SIGNALING_H_
 
 #include "peer_connection.h"
+#include "mongoose.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int peer_signaling_join_channel(const char *client_id, PeerConnection *pc);
+int peer_signaling_join_channel(const char *client_id, PeerConnection *pc, struct mg_mgr *ws_mgr);
 
 void peer_signaling_leave_channel();
 

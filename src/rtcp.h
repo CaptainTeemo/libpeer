@@ -2,7 +2,7 @@
 #define RTCP_H_
 
 #include <stdint.h>
-#include <endian.h>
+#include <machine/endian.h>
 
 typedef enum RtcpType {
 

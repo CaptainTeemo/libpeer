@@ -172,8 +172,7 @@ int udp_get_local_address(UdpSocket *udp_socket, Address *addr) {
   return 0;
 }
 
-int udp_socket_sendto(UdpSocket *udp_socket, Address *addr, const uint8_t *buf, int len) {
-
+int udp_socket_sendto(UdpSocket *udp_socket, Address *addr, const uint8_t *buf, size_t len) {
   struct sockaddr_in sin;
   struct sockaddr_in6 sin6;
   struct sockaddr *sa;
@@ -215,8 +214,7 @@ int udp_socket_sendto(UdpSocket *udp_socket, Address *addr, const uint8_t *buf, 
   return ret;
 }
 
-int udp_socket_recvfrom(UdpSocket *udp_socket, Address *addr, uint8_t *buf, int len) {
-
+int udp_socket_recvfrom(UdpSocket *udp_socket, Address *addr, uint8_t *buf, size_t len) {
   struct sockaddr_in sin;
   struct sockaddr_in6 sin6;
   struct sockaddr *sa;

@@ -3,10 +3,12 @@ project(peer)
 
 option(ENABLE_TESTS "Enable tests" OFF)
 
-include(third_party/coreHTTP/httpFilePaths.cmake)
-include(third_party/coreMQTT/mqttFilePaths.cmake)
+#include(third_party/coreHTTP/httpFilePaths.cmake)
+#include(third_party/coreMQTT/mqttFilePaths.cmake)
 
-include_directories(dist/include)
+include_directories(
+        dist/include
+)
 
 link_directories(dist/lib)
 
@@ -20,4 +22,8 @@ add_subdirectory(examples)
 if(ENABLE_TESTS)
   add_subdirectory(tests)
 endif()
+
+ add_subdirectory(third_party/mbedtls)
+
+# set_target_properties(mbedtls PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}third_party/mbedtls/library/libmbedtls.a") 
 

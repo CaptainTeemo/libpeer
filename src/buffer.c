@@ -36,7 +36,6 @@ void buffer_free(Buffer *rb) {
 }
 
 int buffer_push_tail(Buffer *rb, const uint8_t *data, int size) {
-
   int free_space = (rb->size + rb->head - rb->tail - 1) % rb->size;
 
   int align_size = ALIGN32(size + 4);
@@ -49,9 +48,7 @@ int buffer_push_tail(Buffer *rb, const uint8_t *data, int size) {
   int tail_end = (rb->tail + align_size) % rb->size;
 
   if (tail_end < rb->tail) {
-
     if (rb->head < align_size) {
-
       LOGE("no enough space");
       return -1;
     }
@@ -60,9 +57,7 @@ int buffer_push_tail(Buffer *rb, const uint8_t *data, int size) {
     *p = size;
     memcpy(rb->data, data, size);    
     rb->tail = size;
-
   } else {
-
     int *p = (int*)(rb->data + rb->tail);
     *p = size;
     memcpy(rb->data + rb->tail + 4, data, size);

@@ -24,6 +24,7 @@ ln -s $BASE_DIR/dist/include/cjson/cJSON.h $BASE_DIR/dist/include/cJSON.h
 # Build mbedTLS
 cd $BASE_DIR/third_party/mbedtls
 sed -i 's/\/\/#define MBEDTLS_SSL_DTLS_SRTP/#define MBEDTLS_SSL_DTLS_SRTP/g' include/mbedtls/mbedtls_config.h
+sed -i 's/\/\/#define MBEDTLS_SSL_PROTO_TLS1_3/#define MBEDTLS_SSL_PROTO_TLS1_3/g' include/mbedtls/mbedtls_config.h
 mkdir -p build && cd build
 cmake -DCMAKE_C_FLAGS="-fPIC" -DENABLE_TESTING=off -DENABLE_PROGRAMS=off -DCMAKE_INSTALL_PREFIX=$BASE_DIR/dist ..
 make install

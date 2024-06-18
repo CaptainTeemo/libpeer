@@ -518,7 +518,6 @@ void dtls_srtp_decrypt_rtcp_packet(DtlsSrtp *dtls_srtp, uint8_t *packet, int *by
 }
 
 void dtls_srtp_encrypt_rtp_packet(DtlsSrtp *dtls_srtp, uint8_t *packet, int *bytes) {
-
   srtp_protect(dtls_srtp->srtp_out, packet, bytes);
 }
 
