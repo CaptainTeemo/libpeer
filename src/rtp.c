@@ -59,7 +59,7 @@ static int rtp_encoder_encode_h264_single(RtpEncoder *rtp_encoder, uint8_t *buf,
     // I frame and P frame
     if ((*buf & 0x1f) == 0x05 || (*buf & 0x1f) == 0x01) {
         if ((*buf & 0x1f) == 0x05) {
-            LOGI("sending keyframe");
+            LOGD("sending keyframe");
         }
         rtp_packet->header.markerbit = 1;
         rtp_encoder->timestamp += rtp_encoder->timestamp_increment;

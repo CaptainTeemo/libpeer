@@ -39,24 +39,6 @@ static void signal_handler(int signal) {
 	g_interrupted = 1;
 }
 
-static void* peer_singaling_task(void *data) {
-	while (!g_interrupted) {
-		peer_signaling_loop();
-		usleep(1000);
-	}
-	
-	pthread_exit(NULL);
-}
-
-static void* peer_connection_task(void *data) {
-	while (!g_interrupted) {
-		peer_connection_loop(g_pc);
-		usleep(1000);
-	}
-	
-	pthread_exit(NULL);
-}
-
 static uint64_t get_timestamp() {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -65,7 +47,7 @@ static uint64_t get_timestamp() {
 
 int main(int argc, char *argv[]) {
 	uint64_t curr_time, video_time, audio_time;
-	uint8_t buf[102400];
+	uint8_t buf[2048000];
 	int size;
 	
 	pthread_t peer_singaling_thread;
@@ -75,61 +57,43 @@ int main(int argc, char *argv[]) {
 	
 	psa_crypto_init();
 	
-	PeerConfiguration config = {
-		.ice_servers = {
-			{ .urls = "stun:stun.l.google.com:19302" },
-		},
-			.datachannel = DATA_CHANNEL_STRING,
-			.video_codec = CODEC_H264,
-			.audio_codec = CODEC_PCMA
-	};
-	
 	snprintf((char*)buf, sizeof(buf), "test_%d", getpid());
-	printf("open https://sepfy.github.io/webrtc?deviceId=%s\n", buf);
-	
+
 	peer_init();
-	g_pc = peer_connection_create(&config);
-	peer_connection_oniceconnectionstatechange(g_pc, onconnectionstatechange);
-	peer_connection_ondatachannel(g_pc, onmessasge, onopen, onclose);
 
     struct mg_mgr ws_mgr;
     mg_mgr_init(&ws_mgr);
-    mg_log_set(MG_LL_ERROR);
-    peer_signaling_join_channel((const char*)buf, g_pc, &ws_mgr);
-	
-	pthread_create(&peer_connection_thread, NULL, peer_connection_task, NULL);
-	pthread_create(&peer_singaling_thread, NULL, peer_singaling_task, NULL);
+    mg_log_set(MG_LL_NONE);
+    peer_signaling_join_channel((const char*)buf, &ws_mgr);
 	
 	reader_init();
-    ffmpeg_reader_init();
-	
-	while (!g_interrupted) {
-		if (g_state == PEER_CONNECTION_COMPLETED) {
-			
-			curr_time = get_timestamp();
-			
-			// FPS 25
-			if (curr_time - video_time > 40) {
-				video_time = curr_time;
-//                if (ffmpeg_reader_get_frame(buf, &size) == 0) {
-				if (reader_get_video_frame(buf, &size) == 0) {
-					peer_connection_send_video(g_pc, buf, size);
-				}
-			}
+//    ffmpeg_reader_init();
 
-			if (curr_time - audio_time > 20) {
-				if (reader_get_audio_frame(buf, &size) == 0) {
-					peer_connection_send_audio(g_pc, buf, size);
-				}
-				audio_time = curr_time;
-			}
-			
-			usleep(1000);
-		}
-	}
+    while (!g_interrupted) {
+        curr_time = get_timestamp();
+
+        // FPS 25
+        if (curr_time - video_time > 32.5) {
+            video_time = curr_time;
+//			if (ffmpeg_reader_get_frame(buf, &size, 0) == 0) {
+            if (reader_get_video_frame(buf, &size) == 0) {
+                peer_signaling_send_video(buf, size);
+            }
+        }
+
+        if (curr_time - audio_time > 20) {
+//            if (ffmpeg_reader_get_frame(buf, &size, 1) == 0) {
+            if (reader_get_audio_frame(buf, &size) == 0) {
+                peer_signaling_send_audio(buf, size);
+            }
+            audio_time = curr_time;
+        }
+
+        usleep(1000);
+    }
 	
-	pthread_join(peer_singaling_thread, NULL);
-	pthread_join(peer_connection_thread, NULL);
+//	pthread_join(peer_singaling_thread, NULL);
+//	pthread_join(peer_connection_thread, NULL);
 
     mg_mgr_free(&ws_mgr);
 	

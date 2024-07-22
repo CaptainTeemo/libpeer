@@ -14,10 +14,15 @@
 #include "ports.h"
 #include "peer_connection.h"
 
-#define STATE_CHANGED(pc, curr_state) if(pc->oniceconnectionstatechange && pc->state != curr_state) { pc->oniceconnectionstatechange(curr_state, pc->config.user_data); pc->state = curr_state; }
+#define STATE_CHANGED(pc, curr_state) \
+if(pc->state != curr_state) {         \
+    pc->state = curr_state; \
+    if(pc->oniceconnectionstatechange) { \
+        pc->oniceconnectionstatechange(curr_state, pc->config.user_data); \
+    }                                      \
+}
 
 struct PeerConnection {
-
     PeerConfiguration config;
     PeerConnectionState state;
     Agent agent;
@@ -54,18 +59,15 @@ struct PeerConnection {
 
     uint32_t remote_assrc;
     uint32_t remote_vssrc;
-
 };
 
 static void peer_connection_outgoing_rtp_packet(uint8_t *data, size_t size, void *user_data) {
-
     PeerConnection *pc = (PeerConnection *) user_data;
     dtls_srtp_encrypt_rtp_packet(&pc->dtls_srtp, data, (int *) &size);
     agent_send(&pc->agent, data, size);
 }
 
 static int peer_connection_dtls_srtp_recv(void *ctx, unsigned char *buf, size_t len) {
-
     static const int MAX_RECV = 200;
     int recv_max = 0;
     int ret;
@@ -93,47 +95,58 @@ static int peer_connection_dtls_srtp_recv(void *ctx, unsigned char *buf, size_t 
 }
 
 static int peer_connection_dtls_srtp_send(void *ctx, const uint8_t *buf, size_t len) {
-
     DtlsSrtp *dtls_srtp = (DtlsSrtp *) ctx;
     PeerConnection *pc = (PeerConnection *) dtls_srtp->user_data;
 
     //LOGD("send %.4x %.4x, %ld", *(uint16_t*)buf, *(uint16_t*)(buf + 2), len);
     return agent_send(&pc->agent, buf, len);
+}
+
+static void peer_connection_retransmit_packet(uint16_t seq_num) {
+    // TODO: Implement the logic to retrieve and retransmit the packet with the given sequence number
+    LOGD("Retransmitting packet with sequence number: %u", seq_num);
 
 }
 
 static void peer_connection_incoming_rtcp(PeerConnection *pc, uint8_t *buf, size_t len) {
-
     RtcpHeader *rtcp_header;
     size_t pos = 0;
 
     while (pos < len) {
-
         rtcp_header = (RtcpHeader *) (buf + pos);
-
         switch (rtcp_header->type) {
             case RTCP_RR:
-//        LOGD("RTCP_PR");
-                if (rtcp_header->rc > 0) {
-// TODO: REMB, GCC ...etc
-#if 0
-                    RtcpRr rtcp_rr = rtcp_parse_rr(buf);
-                    uint32_t fraction = ntohl(rtcp_rr.report_block[0].flcnpl) >> 24;
-                    uint32_t total = ntohl(rtcp_rr.report_block[0].flcnpl) & 0x00FFFFFF;
-                    if(pc->on_receiver_packet_loss && fraction > 0) {
-
-                      pc->on_receiver_packet_loss((float)fraction/256.0, total, pc->config.user_data);
+                break;
+            case RTCP_RTPFB: {
+                int fmt = rtcp_header->rc;
+                if (fmt == 1) {
+                    // Handle NACK
+                    LOGD("Handling NACK message");
+                    // Extract NACK information
+                    uint16_t *nack_list = (uint16_t *)((uint8_t *)rtcp_header + sizeof(RtcpHeader));
+                    size_t nack_count = (ntohs(rtcp_header->length) * 4 - sizeof(RtcpHeader)) / 2;
+                    for (size_t i = 0; i < nack_count; i++) {
+                        uint16_t seq_num = ntohs(nack_list[i]);
+                        LOGD("NACK for packet %u", seq_num);
+                        peer_connection_retransmit_packet(seq_num);
                     }
-#endif
                 }
                 break;
+            }
             case RTCP_PSFB: {
                 int fmt = rtcp_header->rc;
-//        LOGD("RTCP_PSFB %d", fmt);
+//                LOGD("RTCP_PSFB %d", fmt);
                 // PLI and FIR
-                if ((fmt == 1 || fmt == 4) && pc->config.on_request_keyframe) {
-                    pc->config.on_request_keyframe();
+                if (fmt == 1 || fmt == 4) {
+                    LOGD("WebRTC request keyframe");
+                    if (pc->config.on_request_keyframe) {
+                        pc->config.on_request_keyframe();
+                    }
                 }
+                if (fmt == 15) {
+                    // TODO: REMB
+                }
+                break;
             }
             default:
                 break;
@@ -144,7 +157,6 @@ static void peer_connection_incoming_rtcp(PeerConnection *pc, uint8_t *buf, size
 }
 
 const char *peer_connection_state_to_string(PeerConnectionState state) {
-
     switch (state) {
         case PEER_CONNECTION_NEW:
             return "new";
@@ -216,12 +228,12 @@ PeerConnection *peer_connection_create(PeerConfiguration *config) {
 }
 
 void peer_connection_destroy(PeerConnection *pc) {
-
     if (pc) {
-
         buffer_free(pc->data_rb);
         buffer_free(pc->audio_rb);
         buffer_free(pc->video_rb);
+		
+		agent_deinit(&pc->agent);
 
         free(pc);
         pc = NULL;
@@ -229,7 +241,6 @@ void peer_connection_destroy(PeerConnection *pc) {
 }
 
 void peer_connection_close(PeerConnection *pc) {
-
     pc->state = PEER_CONNECTION_CLOSED;
 }
 
@@ -238,8 +249,8 @@ int peer_connection_send_audio(PeerConnection *pc, const uint8_t *buf, size_t le
         //LOGE("dtls_srtp not connected");
         return -1;
     }
-
-    return buffer_push_tail(pc->audio_rb, buf, len);
+    return rtp_encoder_encode(&pc->artp_encoder, (uint8_t *)buf, len);
+//    return buffer_push_tail(pc->audio_rb, buf, len);
 }
 
 int peer_connection_send_video(PeerConnection *pc, const uint8_t *buf, size_t len) {
@@ -247,8 +258,9 @@ int peer_connection_send_video(PeerConnection *pc, const uint8_t *buf, size_t le
         //LOGE("dtls_srtp not connected");
         return -1;
     }
+    return rtp_encoder_encode(&pc->vrtp_encoder, (uint8_t *)buf, len);
 
-    return buffer_push_tail(pc->video_rb, buf, len);
+//    return buffer_push_tail(pc->video_rb, buf, len);
 }
 
 int peer_connection_datachannel_send(PeerConnection *pc, char *message, size_t len) {
@@ -266,7 +278,6 @@ int peer_connection_datachannel_send(PeerConnection *pc, char *message, size_t l
 }
 
 static void peer_connection_state_new(PeerConnection *pc) {
-
     char *description = (char *) pc->temp_buf;
 
     memset(pc->temp_buf, 0, sizeof(pc->temp_buf));
@@ -278,7 +289,6 @@ static void peer_connection_state_new(PeerConnection *pc) {
     pc->sctp.connected = 0;
 
     for (int i = 0; i < sizeof(pc->config.ice_servers) / sizeof(pc->config.ice_servers[0]); ++i) {
-
         if (pc->config.ice_servers[i].urls) {
             LOGI("ice_servers: %s\n", pc->config.ice_servers[i].urls);
             agent_gather_candidate(&pc->agent, pc->config.ice_servers[i].urls, pc->config.ice_servers[i].username,
@@ -377,17 +387,17 @@ int peer_connection_loop(PeerConnection *pc) {
             }
             break;
         case PEER_CONNECTION_COMPLETED:
-            data = buffer_peak_head(pc->video_rb, &bytes);
-            if (data) {
-                rtp_encoder_encode(&pc->vrtp_encoder, data, bytes);
-                buffer_pop_head(pc->video_rb);
-            }
-
-            data = buffer_peak_head(pc->audio_rb, &bytes);
-            if (data) {
-                rtp_encoder_encode(&pc->artp_encoder, data, bytes);
-                buffer_pop_head(pc->audio_rb);
-            }
+//            data = buffer_peak_head(pc->video_rb, &bytes);
+//            if (data) {
+//                rtp_encoder_encode(&pc->vrtp_encoder, data, bytes);
+//                buffer_pop_head(pc->video_rb);
+//            }
+//
+//            data = buffer_peak_head(pc->audio_rb, &bytes);
+//            if (data) {
+//                rtp_encoder_encode(&pc->artp_encoder, data, bytes);
+//                buffer_pop_head(pc->audio_rb);
+//            }
 
             data = buffer_peak_head(pc->data_rb, &bytes);
             if (data) {
@@ -452,7 +462,6 @@ int peer_connection_loop(PeerConnection *pc) {
 }
 
 void peer_connection_set_remote_description(PeerConnection *pc, const char *sdp_text) {
-
     char *start = (char *) sdp_text;
     char *line = NULL;
     char buf[256];
@@ -460,7 +469,6 @@ void peer_connection_set_remote_description(PeerConnection *pc, const char *sdp_
     uint32_t *ssrc = NULL;
 
     while ((line = strstr(start, "\r\n"))) {
-
         line = strstr(start, "\r\n");
         strncpy(buf, start, line - start);
         buf[line - start] = '\0';
@@ -484,7 +492,6 @@ void peer_connection_set_remote_description(PeerConnection *pc, const char *sdp_
 }
 
 void peer_connection_create_offer(PeerConnection *pc) {
-
     STATE_CHANGED(pc, PEER_CONNECTION_NEW);
     pc->b_offer_created = 0;
 }
@@ -517,7 +524,6 @@ void peer_connection_on_receiver_packet_loss(PeerConnection *pc,
 }
 
 void peer_connection_onicecandidate(PeerConnection *pc, void (*onicecandidate)(char *sdp_text, void *userdata)) {
-
     pc->onicecandidate = onicecandidate;
 }
 
@@ -532,9 +538,7 @@ void peer_connection_ondatachannel(PeerConnection *pc,
                                    void (*onmessasge)(char *msg, size_t len, void *userdata),
                                    void (*onopen)(void *userdata),
                                    void (*onclose)(void *userdata)) {
-
     if (pc) {
-
         sctp_onopen(&pc->sctp, onopen);
         sctp_onclose(&pc->sctp, onclose);
         sctp_onmessage(&pc->sctp, onmessasge);

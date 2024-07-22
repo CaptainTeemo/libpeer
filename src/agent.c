@@ -307,7 +307,7 @@ void agent_get_local_description(Agent *agent, char *description, int length) {
 
     // remove last \n
     description[strlen(description)] = '\0';
-    LOGD("local description:\n%s", description);
+//    LOGD("local description:\n%s", description);
 }
 
 int agent_send(Agent *agent, const uint8_t *buf, size_t len) {
@@ -408,7 +408,7 @@ a=candidate:1 1 UDP 1 36.231.28.50 38143 typ srflx
 */
     int i, j;
 
-    LOGD("Set remote description:\n%s", description);
+//    LOGD("Set remote description:\n%s", description);
 
     char *line_start = description;
     char *line_end = NULL;

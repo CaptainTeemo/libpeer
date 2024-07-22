@@ -1,8 +1,8 @@
 project(lib)
 
-file(GLOB SRCS "*.c" "librtp/*.c")
+file(GLOB SRCS "*.c" "librtp/*.c" "utils/*.c")
 
-file(GLOB HEADERS "peer.h" "peer_connection.h" "peer_signaling.h" "mongoose.h")
+file(GLOB HEADERS "peer.h" "peer_connection.h" "peer_signaling.h" "mongoose.h" "utils/darray.h")
 
 add_library(peer SHARED
         ${SRCS}

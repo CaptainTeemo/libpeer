@@ -10,6 +10,6 @@
 int ffmpeg_reader_init();
 int ffmpeg_reader_deinit();
 
-int ffmpeg_reader_get_frame(uint8_t *buf, int *size);
+int ffmpeg_reader_get_frame(uint8_t *buf, int *size, int audio);
 
 #endif //PEER_FFMPEG_READER_H

@@ -7,9 +7,10 @@
 #include <libavutil/imgutils.h>
 #include <libavutil/avutil.h>
 
-static const char *video_file = "/Users/naver/Movies/只因你太美clips.mp4";
+static const char *video_file = "/Users/naver/Movies/output.mkv";
 static AVFormatContext *format_context;
 static int video_stream_index = -1;
+static int audio_stream_index = -1;
 static AVCodecContext *codec_context;
 
 int ffmpeg_reader_init() {
@@ -29,15 +30,17 @@ int ffmpeg_reader_init() {
     for (int i = 0; i < format_context->nb_streams; i++) {
         if (format_context->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             video_stream_index = i;
-            break;
         }
+		if (format_context->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+			audio_stream_index = i;
+		}
     }
 
     if (video_stream_index == -1) {
         fprintf(stderr, "Could not find a video stream.\n");
         return -1;
     }
-
+	
     AVCodecParameters *codec_params = format_context->streams[video_stream_index]->codecpar;
     AVCodec *codec = avcodec_find_decoder(codec_params->codec_id);
     if (!codec) {
@@ -64,7 +67,7 @@ int ffmpeg_reader_init() {
     return 0;
 }
 
-int ffmpeg_reader_get_frame(uint8_t *buf, int *size) {
+int ffmpeg_reader_get_frame(uint8_t *buf, int *size, int audio) {
     AVFrame *frame = av_frame_alloc();
     if (!frame) {
         fprintf(stderr, "Could not allocate frame.\n");
@@ -73,7 +76,13 @@ int ffmpeg_reader_get_frame(uint8_t *buf, int *size) {
 
     AVPacket packet;
     if (av_read_frame(format_context, &packet) >= 0) {
-        if (packet.stream_index == video_stream_index) {
+		int target_stream_index = -1;
+		if (audio) {
+			target_stream_index = audio_stream_index;
+		} else {
+			target_stream_index = video_stream_index;
+		}
+        if (packet.stream_index == target_stream_index) {
             if (avcodec_send_packet(codec_context, &packet) == 0) {
                 if (avcodec_receive_frame(codec_context, frame) == 0) {
 //                    int key_frame = packet.flags & AV_PKT_FLAG_KEY;

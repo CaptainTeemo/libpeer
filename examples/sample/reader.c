@@ -12,7 +12,8 @@ static uint8_t *g_audio_buf = NULL;
 int reader_init() {
     FILE *video_fp = NULL;
     FILE *audio_fp = NULL;
-    char videofile[] = "/Users/naver/Documents/GitHub/libpeer/test.264";
+    char videofile[] = "/Users/naver/Movies/output.h264";
+//    char videofile[] = "/Users/naver/Documents/GitHub/libpeer/test.264";
     char audiofile[] = "/Users/naver/Documents/GitHub/libpeer/alaw08m.wav";
 
     video_fp = fopen(videofile, "rb");
@@ -32,7 +33,6 @@ int reader_init() {
     audio_fp = fopen(audiofile, "rb");
 
     if (audio_fp == NULL) {
-
         printf("open file %s failed\n", audiofile);
         return -1;
     }
@@ -57,9 +57,6 @@ uint8_t *reader_h264_find_nalu(uint8_t *buf_start, uint8_t *buf_end) {
         if (memcmp(p, &nalu_start_code_4, 4) == 0) {
             return p;
         }
-//    if ((p + 3) < buf_end && memcmp(p, &nalu_start_code_3, 3) == 0) {
-//        return p;
-//    }
 
         p++;
     }
@@ -69,8 +66,8 @@ uint8_t *reader_h264_find_nalu(uint8_t *buf_start, uint8_t *buf_end) {
 
 int reader_get_video_frame(uint8_t *buf, int *size) {
     int ret = -1;
-    static uint8_t pps_frame[128];
-    static uint8_t sps_frame[128];
+    static uint8_t pps_frame[2048000];
+    static uint8_t sps_frame[2048000];
     static int pps_size = 0;
     static int sps_size = 0;
     uint8_t *buf_end = g_video_buf + g_video_size;

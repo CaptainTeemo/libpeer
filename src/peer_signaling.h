@@ -8,11 +8,12 @@
 extern "C" {
 #endif
 
-int peer_signaling_join_channel(const char *client_id, PeerConnection *pc, struct mg_mgr *ws_mgr);
+int peer_signaling_join_channel(const char *client_id, struct mg_mgr *ws_mgr);
 
 void peer_signaling_leave_channel();
 
-int peer_signaling_loop();
+void peer_signaling_send_video(uint8_t *buf, size_t len);
+void peer_signaling_send_audio(uint8_t *buf, size_t len);
 
 #ifdef __cplusplus
 } 

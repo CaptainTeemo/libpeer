@@ -5,7 +5,6 @@
 #include <machine/endian.h>
 
 typedef enum RtcpType {
-
   RTCP_FIR = 192,
   RTCP_SR = 200,
   RTCP_RR = 201,
@@ -15,7 +14,6 @@ typedef enum RtcpType {
   RTCP_RTPFB = 205,
   RTCP_PSFB = 206,
   RTCP_XR = 207,
-
 } RtcpType;
 
 typedef struct RtcpHeader {
@@ -36,39 +34,30 @@ typedef struct RtcpHeader {
 } RtcpHeader;
 
 typedef struct RtcpReportBlock {
-
   uint32_t ssrc;
   uint32_t flcnpl;
   uint32_t ehsnr;
   uint32_t jitter;
   uint32_t lsr;
   uint32_t dlsr;
-
 } RtcpReportBlock;
 
-
 typedef struct RtcpRr {
-
   RtcpHeader header;
   uint32_t ssrc;
   RtcpReportBlock report_block[1];
-
 } RtcpRr;
 
 typedef struct RtcpFir {
-
   uint32_t ssrc;
   uint32_t seqnr;
-
 } RtcpFir;
 
 typedef struct RtcpFb {
-
   RtcpHeader header;
   uint32_t ssrc;
   uint32_t media;
   char fci[1];
-
 } RtcpFb;
 
 int rtcp_probe(uint8_t *packet, size_t size);

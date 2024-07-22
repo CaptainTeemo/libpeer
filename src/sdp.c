@@ -100,6 +100,7 @@ void sdp_append_h264(Sdp *sdp) {
     sdp_append(sdp, "c=IN IP4 0.0.0.0");
     sdp_append(sdp, "a=sendonly");
     sdp_append(sdp, "a=rtcp-mux");
+    sdp_append(sdp, "b=AS:20000");
 }
 
 void sdp_append_pcma(Sdp *sdp) {

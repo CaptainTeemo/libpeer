@@ -137,20 +137,20 @@ int ice_candidate_from_description(IceCandidate *candidate, char *description, c
       case 3:
         candidate->priority = atoi(buf);
         break;
-      case 4:
-        if (strstr(buf, "local") != 0) {
-          if (ports_resolve_mdns_host(buf, &candidate->addr) < 0) {
-            return -1;
-          }
-          LOGD("mDNS host: %s, ip: %d.%d.%d.%d", buf, candidate->addr.ipv4[0], candidate->addr.ipv4[1], candidate->addr.ipv4[2], candidate->addr.ipv4[3]);
-        } else if (addr_ipv4_validate(buf, strlen(buf), &candidate->addr)) {
-          candidate->addr.family = AF_INET;
-        } else if (addr_ipv6_validate(buf, strlen(buf), &candidate->addr)) {
-	  candidate->addr.family = AF_INET6;
-	} else {
-          return -1;
-	}
-
+        case 4:
+            if (strstr(buf, "local") != 0) {
+                if (ports_resolve_mdns_host(buf, &candidate->addr) < 0) {
+                    return -1;
+                }
+                LOGD("mDNS host: %s, ip: %d.%d.%d.%d", buf, candidate->addr.ipv4[0], candidate->addr.ipv4[1],
+                     candidate->addr.ipv4[2], candidate->addr.ipv4[3]);
+            } else if (addr_ipv4_validate(buf, strlen(buf), &candidate->addr)) {
+                candidate->addr.family = AF_INET;
+            } else if (addr_ipv6_validate(buf, strlen(buf), &candidate->addr)) {
+                candidate->addr.family = AF_INET6;
+            } else {
+                return -1;
+            }
         break;
       case 5:
         candidate->addr.port = atoi(buf);

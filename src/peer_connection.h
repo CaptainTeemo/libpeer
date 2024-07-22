@@ -13,7 +13,6 @@ extern "C" {
 #endif
 
 typedef enum PeerConnectionState {
-
   PEER_CONNECTION_CLOSED = 0,
   PEER_CONNECTION_NEW,
   PEER_CONNECTION_CHECKING,
@@ -21,7 +20,6 @@ typedef enum PeerConnectionState {
   PEER_CONNECTION_COMPLETED,
   PEER_CONNECTION_FAILED,
   PEER_CONNECTION_DISCONNECTED,
-
 } PeerConnectionState;
 
 typedef enum DataChannelType {
