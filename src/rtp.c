@@ -164,6 +164,130 @@ static int rtp_encoder_encode_h264(RtpEncoder *rtp_encoder, uint8_t *buf, size_t
     return 0;
 }
 
+static uint8_t *h265_find_nalu(uint8_t *buf_start, uint8_t *buf_end) {
+    uint8_t *p = buf_start + 2;
+    while (p < buf_end) {
+        if (*(p - 2) == 0x00 && *(p - 1) == 0x00 && *p == 0x01) {
+            return p + 1;
+        }
+        p++;
+    }
+    return buf_end;
+}
+
+static int rtp_encoder_encode_h265_single(RtpEncoder *rtp_encoder, uint8_t *buf, size_t size) {
+    RtpPacket *rtp_packet = (RtpPacket *)rtp_encoder->buf;
+    NaluHeader *nalu_header = (NaluHeader *)buf;
+
+    rtp_packet->header.version = 2;
+    rtp_packet->header.padding = 0;
+    rtp_packet->header.extension = 0;
+    rtp_packet->header.csrccount = 0;
+    rtp_packet->header.markerbit = 0;
+    rtp_packet->header.type = rtp_encoder->type;
+    rtp_packet->header.seq_number = htons(rtp_encoder->seq_number++);
+    rtp_packet->header.timestamp = htonl(rtp_encoder->timestamp);
+    rtp_packet->header.ssrc = htonl(rtp_encoder->ssrc);
+
+    // Check for I-frame (IDR) or P-frame
+    uint8_t nal_type = (nalu_header->type >> 1) & 0x3F;
+    if (nal_type >= 16 && nal_type <= 21) {  // IRAP (Intra Random Access Point) pictures
+        if (nal_type == 19 || nal_type == 20) {  // IDR
+            LOGD("sending keyframe");
+        }
+        rtp_packet->header.markerbit = 1;
+        rtp_encoder->timestamp += rtp_encoder->timestamp_increment;
+    }
+
+    memcpy(rtp_packet->payload, buf, size);
+    rtp_encoder->on_packet(rtp_encoder->buf, size + sizeof(RtpHeader), rtp_encoder->user_data);
+    return 0;
+}
+
+// static int rtp_encoder_encode_h265_fu(RtpEncoder *rtp_encoder, uint8_t *buf, size_t size) {
+//     RtpPacket *rtp_packet = (RtpPacket *)rtp_encoder->buf;
+//     NaluHeader *nalu_header = (NaluHeader *)buf;
+
+//     rtp_packet->header.version = 2;
+//     rtp_packet->header.padding = 0;
+//     rtp_packet->header.extension = 0;
+//     rtp_packet->header.csrccount = 0;
+//     rtp_packet->header.markerbit = 0;
+//     rtp_packet->header.type = rtp_encoder->type;
+//     rtp_packet->header.timestamp = htonl(rtp_encoder->timestamp);
+//     rtp_packet->header.ssrc = htonl(rtp_encoder->ssrc);
+
+//     uint8_t nal_type = (nalu_header->type >> 1) & 0x3F;
+//     uint8_t nuh_layer_id = ((nalu_header->type & 0x01) << 5) | (nalu_header->layer_id >> 1);
+//     uint8_t nuh_temporal_id_plus1 = nalu_header->tid;
+
+//     // Increase timestamp if I or P frame
+//     if (nal_type >= 16 && nal_type <= 21) {  // IRAP pictures
+//         rtp_encoder->timestamp += rtp_encoder->timestamp_increment;
+//     }
+
+//     NaluHeader *fu_indicator = (NaluHeader *)rtp_packet->payload;
+//     FuHeader *fu_header = (FuHeader *)(rtp_packet->payload + 2);
+//     fu_header->s = 1;
+
+//     buf += 2;  // Skip original NALU header
+//     size -= 2;
+
+//     while (size > 0) {
+//         fu_indicator->f = nalu_header->f;
+//         fu_indicator->type = 49;  // FU
+//         fu_indicator->layer_id = nuh_layer_id;
+//         fu_indicator->tid = nuh_temporal_id_plus1;
+
+//         fu_header->type = nal_type;
+//         rtp_packet->header.seq_number = htons(rtp_encoder->seq_number++);
+
+//         if (size <= FU_PAYLOAD_SIZE) {
+//             fu_header->e = 1;
+//             rtp_packet->header.markerbit = 1;
+//             memcpy(rtp_packet->payload + 3, buf, size);
+//             rtp_encoder->on_packet(rtp_encoder->buf, size + sizeof(RtpHeader) + 3, rtp_encoder->user_data);
+//             break;
+//         }
+
+//         fu_header->e = 0;
+//         memcpy(rtp_packet->payload + 3, buf, FU_PAYLOAD_SIZE);
+//         rtp_encoder->on_packet(rtp_encoder->buf, FU_PAYLOAD_SIZE + sizeof(RtpHeader) + 3, rtp_encoder->user_data);
+//         size -= FU_PAYLOAD_SIZE;
+//         buf += FU_PAYLOAD_SIZE;
+
+//         fu_header->s = 0;
+//     }
+
+//     return 0;
+// }
+
+// static int rtp_encoder_encode_h265(RtpEncoder *rtp_encoder, uint8_t *buf, size_t size) {
+//     uint8_t *buf_end = buf + size;
+//     uint8_t *pstart, *pend;
+//     size_t nalu_size;
+
+//     for (pstart = h265_find_nalu(buf, buf_end); pstart < buf_end; pstart = pend) {
+//         pend = h265_find_nalu(pstart, buf_end);
+//         nalu_size = pend - pstart;
+
+//         if (pend != buf_end) {
+//             nalu_size--;
+//         }
+
+//         while (pstart[nalu_size - 1] == 0x00) {
+//             nalu_size--;
+//         }
+
+//         if (nalu_size <= RTP_PAYLOAD_SIZE) {
+//             rtp_encoder_encode_h265_single(rtp_encoder, pstart, nalu_size);
+//         } else {
+//             rtp_encoder_encode_h265_fu(rtp_encoder, pstart, nalu_size);
+//         }
+//     }
+//     return 0;
+// }
+
 static int rtp_encoder_encode_generic(RtpEncoder *rtp_encoder, uint8_t *buf, size_t size) {
     RtpHeader *rtp_header = (RtpHeader *) rtp_encoder->buf;
     rtp_header->version = 2;

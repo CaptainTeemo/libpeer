@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 
+#include "rtcp_nack_responder.h"
 #include "sctp.h"
 #include "agent.h"
 #include "dtls_srtp.h"
@@ -28,6 +29,8 @@ struct PeerConnection {
     Agent agent;
     DtlsSrtp dtls_srtp;
     Sctp sctp;
+
+    struct Storage *nack_storage;
 
     Sdp local_sdp;
     Sdp remote_sdp;
@@ -65,6 +68,7 @@ static void peer_connection_outgoing_rtp_packet(uint8_t *data, size_t size, void
     PeerConnection *pc = (PeerConnection *) user_data;
     dtls_srtp_encrypt_rtp_packet(&pc->dtls_srtp, data, (int *) &size);
     agent_send(&pc->agent, data, size);
+    storage_store(pc->nack_storage, data, size);
 }
 
 static int peer_connection_dtls_srtp_recv(void *ctx, unsigned char *buf, size_t len) {
@@ -102,10 +106,14 @@ static int peer_connection_dtls_srtp_send(void *ctx, const uint8_t *buf, size_t 
     return agent_send(&pc->agent, buf, len);
 }
 
-static void peer_connection_retransmit_packet(uint16_t seq_num) {
-    // TODO: Implement the logic to retrieve and retransmit the packet with the given sequence number
+static void peer_connection_retransmit_packet(PeerConnection *pc, uint16_t seq_num) {
     LOGD("Retransmitting packet with sequence number: %u", seq_num);
 
+    size_t packet_size;
+    uint8_t *packet = storage_get(pc->nack_storage, seq_num, &packet_size);
+    if (packet) {
+        agent_send(&pc->agent, packet, packet_size);
+    }
 }
 
 static void peer_connection_incoming_rtcp(PeerConnection *pc, uint8_t *buf, size_t len) {
@@ -128,7 +136,7 @@ static void peer_connection_incoming_rtcp(PeerConnection *pc, uint8_t *buf, size
                     for (size_t i = 0; i < nack_count; i++) {
                         uint16_t seq_num = ntohs(nack_list[i]);
                         LOGD("NACK for packet %u", seq_num);
-                        peer_connection_retransmit_packet(seq_num);
+                        peer_connection_retransmit_packet(pc, seq_num);
                     }
                 }
                 break;
@@ -224,6 +232,8 @@ PeerConnection *peer_connection_create(PeerConfiguration *config) {
                          pc->config.onvideotrack, pc->config.user_data);
     }
 
+    pc->nack_storage = storage_create(100);
+
     return pc;
 }
 
@@ -232,7 +242,9 @@ void peer_connection_destroy(PeerConnection *pc) {
         buffer_free(pc->data_rb);
         buffer_free(pc->audio_rb);
         buffer_free(pc->video_rb);
-		
+
+        storage_destroy(pc->nack_storage);
+
 		agent_deinit(&pc->agent);
 
         free(pc);

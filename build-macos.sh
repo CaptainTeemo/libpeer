@@ -1,0 +1,1 @@
+xcodebuild build -project ./build/peer.xcodeproj -scheme sample -derivedDataPath ./build | xcpretty -r json-compilation-database --output ./compile_commands.json
